@@ -3,11 +3,9 @@ package server;
 import handler.Handler;
 import request.Request;
 
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.Socket;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -25,23 +23,17 @@ public class Client implements Runnable {
 
     @Override
     public void run() {
-        try {
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream());
-            String requestLine = in.readLine();
-            String[] parts = requestLine.split(" ");
+        try (
+                BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
+                BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream())) {
 
-            if (parts.length != 3) {
-                // just close socket
-                socket.close();
-//                    continue;
-            }
-
-            Request request = new Request(parts[0], parts[1]);
-            if (request.getMethod() == null || !handlers.containsKey(request.getMethod())) {
+            Request request = Request.requestBuild(in);
+            if (request == null || !handlers.containsKey(request.getMethod())) {
                 responseLack(out, "404", "Request Not Found");
-//                    continue;
-            }
+
+                return;
+            } else
+                printRequestDebug(request);
 
             Map<String, Handler> handlerMap = handlers.get(request.getMethod());
             String requestPath = request.getPath();
@@ -51,7 +43,7 @@ public class Client implements Runnable {
             } else {
                 if (!Server.validPaths.contains(requestPath)) {
                     responseLack(out, "404", "Not Found");
-//                        continue;
+
                 } else {
                     Path filePath = Path.of(".", "public", requestPath);
                     String mimeType = Files.probeContentType(filePath);
@@ -72,7 +64,7 @@ public class Client implements Runnable {
                         ).getBytes());
                         out.write(content);
                         out.flush();
-//                            continue;
+
                     }
 
                     long length = Files.size(filePath);
@@ -88,7 +80,7 @@ public class Client implements Runnable {
                 }
             }
 
-        } catch (IOException e) {
+        } catch (IOException | URISyntaxException e) {
             e.printStackTrace();
         }
     }
@@ -102,5 +94,19 @@ public class Client implements Runnable {
                         "\r\n"
         ).getBytes());
         out.flush();
+    }
+
+    private void printRequestDebug(Request request) {
+        System.out.println("Request debug information: ");
+        System.out.println("METHOD: " + request.getMethod());
+        System.out.println("PATH: " + request.getPath());
+        System.out.println("---HEADERS:---Начало---");
+        for (String header : request.getHeaders()) {
+            System.out.println(header);
+        }
+        System.out.println("---HEADERS:---Конец---");
+        System.out.println("BODY: " + request.getQueryParams());
+        System.out.println("BODY Test login: " + request.getQueryParam("login"));
+        System.out.println("BODY Test password: " + request.getQueryParam("password"));
     }
 }
